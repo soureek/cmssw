@@ -62,7 +62,7 @@ class MatrixInjector(object):
                 self.DbsUrl = "https://"+self.wmagent+"/dbs/int/global/DBSReader"
 
         if not self.dqmgui:
-            self.dqmgui="https://cmsweb.cern.ch/dqm/relval;https://cmsweb-testbed.cern.ch/dqm/relval"
+            self.dqmgui="https://cmsweb.cern.ch/dqm/relval"
         #couch stuff
         self.couch = 'https://'+self.wmagent+'/couchdb'
 #        self.couchDB = 'reqmgr_config_cache'
@@ -177,6 +177,17 @@ class MatrixInjector(object):
             wmsplit['TTbar_13_ID']=1
             wmsplit['SingleMuPt10FS_ID']=1
             wmsplit['TTbarFS_ID']=1
+            wmsplit['RECODR2_50nsreHLT']=1
+            wmsplit['RECODR2_25nsreHLT']=1
+            wmsplit['HLTDR2_50ns']=1
+            wmsplit['HLTDR2_25ns']=1
+            wmsplit['Hadronizer']=1
+            wmsplit['REMINIAODPROD']=1
+            wmsplit['REMINIAOD']=1
+            wmsplit['REMINIAOD_PU50']=1
+            wmsplit['REMINIAOD_PU25']=1
+            wmsplit['REMINIAODDR2_50ns']=1
+            wmsplit['REMINIAODDR2_25ns']=1
                                     
             #import pprint
             #pprint.pprint(wmsplit)            
@@ -202,6 +213,9 @@ class MatrixInjector(object):
                     if len( [step for step in s[3] if "HARVESTGEN" in step] )>0:
                         chainDict['TimePerEvent']=0.01
                         thisLabel=thisLabel+"_gen"
+                    # for re-miniAOD test
+                    if len( [step for step in s[3] if "REMINIAOD" in step] )>0:
+                        thisLabel=thisLabel+"_ReMiniAOD"
                     processStrPrefix=''
                     setPrimaryDs=None
                     for step in s[3]:
@@ -273,6 +287,10 @@ class MatrixInjector(object):
                                     chainDict['nowmTasklist'][-1]['LumisPerJob']=splitForThisWf
                                 if step in wmsplit:
                                     chainDict['nowmTasklist'][-1]['LumisPerJob']=wmsplit[step]
+
+                            # change LumisPerJob for Hadronizer steps. 
+                            if 'Hadronizer' in step: 
+                                chainDict['nowmTasklist'][-1]['LumisPerJob']=wmsplit['Hadronizer']
 
                             #print step
                             chainDict['nowmTasklist'][-1]['TaskName']=step

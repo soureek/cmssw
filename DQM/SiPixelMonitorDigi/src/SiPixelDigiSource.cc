@@ -99,31 +99,27 @@ SiPixelDigiSource::~SiPixelDigiSource()
 
 
 void 
-SiPixelDigiSource::beginLuminosityBlock(edm::LuminosityBlock const&, edm::EventSetup const&)
+SiPixelDigiSource::beginLuminosityBlock(const edm::LuminosityBlock& lb, edm::EventSetup const&)
 {
+  int thisls = lb.id().luminosityBlock();
+
+  if(modOn && thisls % 10 == 0 && averageDigiOccupancy){
+    nBPIXDigis = 0; 
+    nFPIXDigis = 0;
+    for(int i=0; i!=40; i++) nDigisPerFed[i]=0;
+  }
+  if(!modOn && averageDigiOccupancy){
+    nBPIXDigis = 0; 
+    nFPIXDigis = 0;
+    for(int i=0; i!=40; i++) nDigisPerFed[i]=0;
+  }
   
-
- if(modOn && nLumiSecs%10==0){
-    if(averageDigiOccupancy){
-      nBPIXDigis = 0; 
-      nFPIXDigis = 0;
-      for(int i=0; i!=40; i++) nDigisPerFed[i]=0;
-    }
-  }
-  if(!modOn){
-    if(averageDigiOccupancy){
-      nBPIXDigis = 0; 
-      nFPIXDigis = 0;
-      for(int i=0; i!=40; i++) nDigisPerFed[i]=0;
-    }
-  }
-
 }
 
 void 
-SiPixelDigiSource::endLuminosityBlock(edm::LuminosityBlock const&, edm::EventSetup const&)
+SiPixelDigiSource::endLuminosityBlock(const edm::LuminosityBlock& lb, edm::EventSetup const&)
 {
-  nLumiSecs++;
+  int thisls = lb.id().luminosityBlock();
 
   float averageBPIXFed = float(nBPIXDigis)/32.;
   float averageFPIXFed = float(nFPIXDigis)/8.;
@@ -138,19 +134,16 @@ SiPixelDigiSource::endLuminosityBlock(edm::LuminosityBlock const&, edm::EventSet
 	}else{
 	  if(averageFPIXFed>0.) averageOcc = nDigisPerFed[i]/averageFPIXFed;
 	}
-	
 	if (!modOn){
-	  float entry=(averageDigiOccupancy->getBinContent(i+1) * (nLumiSecs-1) + averageOcc)/nLumiSecs; //this is the mean of the actual value + the bin entry already present in the histo, that is what we want in Offline GUI
-	  averageDigiOccupancy->setBinContent(i+1,entry);
+	  averageDigiOccupancy->Fill(i+1,averageOcc);
 	}        
-
-	if (modOn && nLumiSecs%10==0){
-	  averageDigiOccupancy->setBinContent(i+1,averageOcc); // "modOn" basically mean Online DQM, in this case fill histos with actual value of digi fraction per fed for each ten lumisections
-	  if (avgfedDigiOccvsLumi){
-	  avgfedDigiOccvsLumi->setBinContent(int(nLumiSecs/10), i+1, averageOcc); //fill with the mean over ten the 10 lumisections, previous code was filling this histo only with last event of each 10th lumisection
-	}//endif meX5
-      }//endif modOn
-    }
+	if ( modOn ){
+	  if (thisls % 10 == 0)
+	    averageDigiOccupancy->Fill(i+1,averageOcc); // "modOn" basically mean Online DQM, in this case fill histos with actual value of digi fraction per fed for each ten lumisections
+	  if (avgfedDigiOccvsLumi && thisls % 5 == 0)
+	    avgfedDigiOccvsLumi->setBinContent(int(thisls / 5), i+1, averageOcc); //fill with the mean over 5 lumisections, previous code was filling this histo only with last event of each 10th lumisection
+	}
+      }
   }
 }
 
@@ -166,9 +159,6 @@ void SiPixelDigiSource::dqmBeginRun(const edm::Run& r, const edm::EventSetup& iS
   LogInfo ("PixelDQM") << "2DIM IS " << twoDimOn << " and set to high resolution? " << hiRes << "\n";
 
   if(firstRun){
-    eventNo = 0;
-    lumSec = 0;
-    nLumiSecs = 0;
     nBigEvents = 0;
     nBPIXDigis = 0; 
     nFPIXDigis = 0;
@@ -243,8 +233,6 @@ void SiPixelDigiSource::analyze(const edm::Event& iEvent, const edm::EventSetup&
   iSetup.get<TrackerTopologyRcd>().get(tTopoHandle);
   const TrackerTopology *pTT = tTopoHandle.product();
   
-  eventNo++;
-
   // get input data
   edm::Handle< edm::DetSetVector<PixelDigi> >  input;
   iEvent.getByToken(srcToken_, input);
@@ -255,7 +243,6 @@ void SiPixelDigiSource::analyze(const edm::Event& iEvent, const edm::EventSetup&
 
   int lumiSection = (int)iEvent.luminosityBlock();
   int nEventDigis = 0; int nActiveModules = 0;
-  
 
   std::map<uint32_t,SiPixelDigiModule*>::iterator struct_iter;
   for(int i=0; i!=192; i++) numberOfDigis[i]=0;
@@ -579,8 +566,7 @@ void SiPixelDigiSource::analyze(const edm::Event& iEvent, const edm::EventSetup&
     if(pixEvtsPerBX) pixEvtsPerBX->Fill(float(bx));
     if(pixEventRate) pixEventRate->Fill(lumiSection, 1./23.);
   }
-
-  // slow down...
+  
   if(slowDown) usleep(10000);
   
 }
@@ -705,11 +691,11 @@ void SiPixelDigiSource::bookMEs(DQMStore::IBooker & iBooker, const edm::EventSet
   char title6[80];  sprintf(title6, "Number of Low-Efficiency Endcap ROCs;LumiSection;N_{LO EFF} Endcap ROCs");
   loOccROCsEndcap = iBooker.book1D("loOccROCsEndcap",title6,500,0.,5000.);
   char title7[80];  sprintf(title7, "Average digi occupancy per FED;FED;NDigis/<NDigis>");
-  averageDigiOccupancy = iBooker.book1D("averageDigiOccupancy",title7,40,-0.5,39.5);
+  averageDigiOccupancy = iBooker.bookProfile("averageDigiOccupancy",title7,40,-0.5,39.5,0.,3.);
   averageDigiOccupancy->setLumiFlag();
   if(modOn){
     char title4[80]; sprintf(title4, "FED Digi Occupancy (NDigis/<NDigis>) vs LumiSections;Lumi Section;FED");
-    avgfedDigiOccvsLumi = iBooker.book2D ("avgfedDigiOccvsLumi", title4, 320,0., 3200., 40, -0.5, 39.5);
+    avgfedDigiOccvsLumi = iBooker.book2D ("avgfedDigiOccvsLumi", title4, 640,0., 3200., 40, -0.5, 39.5);
   }  
   std::map<uint32_t,SiPixelDigiModule*>::iterator struct_iter;
  

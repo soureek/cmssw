@@ -67,6 +67,11 @@ class ValidationJob:
         self.__valName = valString[1]
         self.__commandLineOptions = options
         self.__config = config
+        self.__preexisting = ("preexisting" in self.__valType)
+        if self.__valType[0] == "*":
+            self.__valType = self.__valType[1:]
+            self.__preexisting = True
+
         # workaround for intermediate parallel version
         if self.__valType == "offlineParallel":
             print ("offlineParallel and offline are now the same.  To run an offline parallel validation,\n"
@@ -109,22 +114,10 @@ class ValidationJob:
                 secondAlign = Alignment( secondAlignName, self.__config,
                                          secondRun )
                 secondAlignName = secondAlign.name
-            # check if alignment was already compared previously
-            try:
-                randomWorkdirPart = \
-                    globalDictionaries.alignRandDict[firstAlignName]
-            except KeyError:
-                randomWorkdirPart = None
                 
             validation = GeometryComparison( name, firstAlign, secondAlign,
                                              self.__config,
-                                             self.__commandLineOptions.getImages,
-                                             randomWorkdirPart )
-            globalDictionaries.alignRandDict[firstAlignName] = \
-                validation.randomWorkdirPart
-            if not secondAlignName == "IDEAL":
-                globalDictionaries.alignRandDict[secondAlignName] = \
-                    validation.randomWorkdirPart
+                                             self.__commandLineOptions.getImages)
         elif valType == "offline":
             validation = OfflineValidation( name, 
                 Alignment( alignments.strip(), self.__config ), self.__config )
@@ -148,13 +141,14 @@ class ValidationJob:
                 Alignment( alignments.strip(), self.__config ), self.__config )
         else:
             raise AllInOneError, "Unknown validation mode '%s'"%valType
-        self.preexisting = ("preexisting" in valType)
         return validation
 
     def __createJob( self, jobMode, outpath ):
         """This private method creates the needed files for the validation job.
            """
         self.validation.createConfiguration( outpath )
+        if self.__preexisting:
+            return
         self.__scripts = sum([addIndex(script, self.validation.NJobs) for script in self.validation.createScript( outpath )], [])
         if jobMode.split( ',' )[0] == "crab":
             self.validation.createCrabCfg( outpath )
@@ -162,13 +156,11 @@ class ValidationJob:
 
     def createJob(self):
         """This is the method called to create the job files."""
-        if self.preexisting:
-            return
         self.__createJob( self.validation.jobmode,
                           os.path.abspath( self.__commandLineOptions.Name) )
 
     def runJob( self ):
-        if self.preexisting:
+        if self.__preexisting:
             log = ">             " + self.validation.name + " is already validated."
             print log
             return log
@@ -194,6 +186,10 @@ class ValidationJob:
                     "script": script,
                     "bsub": "/afs/cern.ch/cms/caf/scripts/cmsbsub"
                     }
+                for ext in ("stdout", "stderr", "stdout.gz", "stderr.gz"):
+                    oldlog = "%(logDir)s/%(jobName)s."%repMap + ext
+                    if os.path.exists(oldlog):
+                        os.remove(oldlog)
                 bsubOut=getCommandOutput2("%(bsub)s %(commands)s "
                                           "-J %(jobName)s "
                                           "-o %(logDir)s/%(jobName)s.stdout "
@@ -314,9 +310,9 @@ def createMergeScript( path, validations ):
             repMap["haddLoop"] = validation.appendToMerge(repMap["haddLoop"])
             repMap["haddLoop"] += "tmpMergeRetCode=${?}\n"
             repMap["haddLoop"] += ("if [[ tmpMergeRetCode -eq 0 ]]; then "
-                                   "cmsStage -f "
+                                   "xrdcp -f "
                                    +validation.getRepMap()["finalOutputFile"]
-                                   +" "
+                                   +" root://eoscms//eos/cms"
                                    +validation.getRepMap()["finalResultFile"]
                                    +"; fi\n")
             repMap["haddLoop"] += ("if [[ ${tmpMergeRetCode} -gt ${mergeRetCode} ]]; then "
@@ -324,7 +320,7 @@ def createMergeScript( path, validations ):
             for f in validation.getRepMap()["outputFiles"]:
                 longName = os.path.join("/store/caf/user/$USER/",
                                         validation.getRepMap()["eosdir"], f)
-                repMap["rmUnmerged"] += "    cmsRm "+longName+"\n"
+                repMap["rmUnmerged"] += "    $eos rm "+longName+"\n"
     repMap["rmUnmerged"] += ("else\n"
                              "    echo -e \\n\"WARNING: Merging failed, unmerged"
                              " files won't be deleted.\\n"
@@ -398,14 +394,14 @@ def main(argv = None):
        argv = sys.argv[1:]
     optParser = optparse.OptionParser()
     optParser.description = """All-in-one Alignment Validation.
-This will run various validation procedures either on batch queues or interactviely. 
+This will run various validation procedures either on batch queues or interactively.
 If no name is given (-N parameter) a name containing time and date is created automatically.
 To merge the outcome of all validation procedures run TkAlMerge.sh in your validation's directory.
 """
     optParser.add_option("-n", "--dryRun", dest="dryRun", action="store_true", default=False,
                          help="create all scripts and cfg File but do not start jobs (default=False)")
-    optParser.add_option( "--getImages", dest="getImages", action="store_true", default=False,
-                          help="get all Images created during the process (default= False)")
+    optParser.add_option( "--getImages", dest="getImages", action="store_true", default=True,
+                          help="get all Images created during the process (default= True)")
     defaultConfig = "TkAlConfig.ini"
     optParser.add_option("-c", "--config", dest="config", default = defaultConfig,
                          help="configuration to use (default TkAlConfig.ini) this can be a comma-seperated list of all .ini file you want to merge", metavar="CONFIG")
@@ -506,11 +502,6 @@ To merge the outcome of all validation procedures run TkAlMerge.sh in your valid
     config.set("general","logdir",os.path.join(general["logdir"],options.Name) )
     config.set("general","eosdir",os.path.join("AlignmentValidation", general["eosdir"], options.Name) )
 
-    # clean up of log directory to avoid cluttering with files with different
-    # random numbers for geometry comparison
-    if os.path.isdir( outPath ):
-        shutil.rmtree( outPath )
-    
     if not os.path.exists( outPath ):
         os.makedirs( outPath )
     elif not os.path.isdir( outPath ):
@@ -552,6 +543,11 @@ To merge the outcome of all validation procedures run TkAlMerge.sh in your valid
                 "bsub": "/afs/cern.ch/cms/caf/scripts/cmsbsub",
                 "conditions": '"' + " && ".join(["ended(" + jobId + ")" for jobId in ValidationJob.batchJobIds]) + '"'
                 }
+            for ext in ("stdout", "stderr", "stdout.gz", "stderr.gz"):
+                oldlog = "%(logDir)s/%(jobName)s."%repMap + ext
+                if os.path.exists(oldlog):
+                    os.remove(oldlog)
+
             getCommandOutput2("%(bsub)s %(commands)s "
                               "-o %(logDir)s/%(jobName)s.stdout "
                               "-e %(logDir)s/%(jobName)s.stderr "

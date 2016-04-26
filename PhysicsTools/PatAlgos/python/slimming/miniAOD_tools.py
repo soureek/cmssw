@@ -88,10 +88,14 @@ def miniAOD_customizeCommon(process):
     #
     # apply type I + other PFMEt corrections to pat::MET object
     # and estimate systematic uncertainties on MET
+
+    process.selectedPatJetsForMETUnc = process.selectedPatJets.clone()
+    process.selectedPatJetsForMETUnc.cut = cms.string("pt > 15")
+
     from PhysicsTools.PatUtils.tools.runMETCorrectionsAndUncertainties import runMetCorAndUncForMiniAODProduction
     runMetCorAndUncForMiniAODProduction(process, metType="PF",
                                         jetCollUnskimmed="patJets",
-                                        jetColl="selectedPatJets")
+                                        jetColl="selectedPatJetsForMETUnc")
     
     #caloMET computation
     from PhysicsTools.PatAlgos.tools.metTools import addMETCollection
@@ -107,7 +111,7 @@ def miniAOD_customizeCommon(process):
                                      )
     runMetCorAndUncForMiniAODProduction(process,
                                         pfCandColl=cms.InputTag("noHFCands"),
-                                        recomputeMET=True, #needed for HF removal
+                                        recoMetFromPFCs=True, #needed for HF removal
                                         postfix="NoHF"
                                         )
     process.load('PhysicsTools.PatAlgos.slimming.slimmedMETs_cfi')
@@ -165,9 +169,11 @@ def miniAOD_customizeCommon(process):
     #VID Electron IDs
     electron_ids = ['RecoEgamma.ElectronIdentification.Identification.cutBasedElectronID_PHYS14_PU20bx25_V2_cff',
                     'RecoEgamma.ElectronIdentification.Identification.cutBasedElectronID_Spring15_25ns_V1_cff',
-                    'RecoEgamma.ElectronIdentification.Identification.cutBasedElectronID_Spring15_50ns_V1_cff',
+                    'RecoEgamma.ElectronIdentification.Identification.cutBasedElectronID_Spring15_50ns_V2_cff',
                     'RecoEgamma.ElectronIdentification.Identification.heepElectronID_HEEPV60_cff',
-                    'RecoEgamma.ElectronIdentification.Identification.mvaElectronID_Spring15_25ns_nonTrig_V1_cff']
+                    'RecoEgamma.ElectronIdentification.Identification.mvaElectronID_Spring15_25ns_nonTrig_V1_cff',
+                    'RecoEgamma.ElectronIdentification.Identification.mvaElectronID_Spring15_25ns_Trig_V1_cff',
+                    'RecoEgamma.ElectronIdentification.Identification.mvaElectronID_Spring15_50ns_Trig_V1_cff']
     switchOnVIDElectronIdProducer(process,DataFormat.MiniAOD)
     process.egmGsfElectronIDs.physicsObjectSrc = \
         cms.InputTag("reducedEgamma","reducedGedGsfElectrons")
@@ -179,10 +185,10 @@ def miniAOD_customizeCommon(process):
         setupAllVIDIdsInModule(process,idmod,setupVIDElectronSelection,None,False)
 
     #VID Photon IDs
-    photon_ids = ['RecoEgamma.PhotonIdentification.Identification.cutBasedPhotonID_PHYS14_PU20bx25_V2_cff',
+    photon_ids = ['RecoEgamma.PhotonIdentification.Identification.cutBasedPhotonID_PHYS14_PU20bx25_V2p1_cff',
                   'RecoEgamma.PhotonIdentification.Identification.cutBasedPhotonID_Spring15_50ns_V1_cff',
-                  'RecoEgamma.PhotonIdentification.Identification.mvaPhotonID_Spring15_25ns_nonTrig_V2_cff',
-                  'RecoEgamma.PhotonIdentification.Identification.mvaPhotonID_Spring15_50ns_nonTrig_V2_cff']
+                  'RecoEgamma.PhotonIdentification.Identification.mvaPhotonID_Spring15_25ns_nonTrig_V2p1_cff',
+                  'RecoEgamma.PhotonIdentification.Identification.mvaPhotonID_Spring15_50ns_nonTrig_V2p1_cff']
     switchOnVIDPhotonIdProducer(process,DataFormat.MiniAOD) 
     process.egmPhotonIDs.physicsObjectSrc = \
         cms.InputTag("reducedEgamma","reducedGedPhotons")
@@ -196,6 +202,13 @@ def miniAOD_customizeCommon(process):
         cms.InputTag('reducedEgamma','reducedGedPhotons')
     for idmod in photon_ids:
         setupAllVIDIdsInModule(process,idmod,setupVIDPhotonSelection,None,False)
+
+    #----------------------------------------------------------------------------
+    # CV: add old and new tau ID discriminators for CMSSW 7_6_x reminiAOD v2
+    process.load("RecoTauTag.Configuration.RecoPFTauTag_reminiAOD_cff")
+    from PhysicsTools.PatAlgos.tools.tauTools import switchToPFTauHPS76xReMiniAOD
+    switchToPFTauHPS76xReMiniAOD(process)
+    #----------------------------------------------------------------------------
     
     # Adding puppi jets
     process.load('CommonTools.PileupAlgos.Puppi_cff')
