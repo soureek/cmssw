@@ -54,6 +54,7 @@ namespace btagbtvdeep {
     float trackJetDistSig_;
 
     float trackDecayLength_;
+
   };
 
 }  // namespace btagbtvdeep

@@ -68,6 +68,7 @@ namespace btagbtvdeep {
       trackJetDistSig_ = 0.;
       trackDecayLength_ = 0.;
       return;
+
     }
 
     math::XYZVector trackMom = track_ptr->momentum();
@@ -106,6 +107,7 @@ namespace btagbtvdeep {
 
 //  trackDecayLength_ = static_cast<float>(decayl.value());
     trackDecayLength_ = static_cast<float>(decayLength);
+
   }
 
 }  // namespace btagbtvdeep
